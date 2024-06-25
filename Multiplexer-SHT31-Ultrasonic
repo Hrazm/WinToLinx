@@ -1,0 +1,95 @@
+#include <Wire.h>
+#include "SHT31.h"
+#include "Arduino_GroveI2C_Ultrasonic.h"
+
+#define TCA_ADDRESS 0x70
+#define ULTRASONIC_ADDRESS 0x57
+Arduino_GroveI2C_Ultrasonic ultrasonic(Wire, ULTRASONIC_ADDRESS);
+SHT31 sensor1;
+SHT31 sensor2;
+
+bool b1, b2;
+unsigned long timeTemp,timeUltra;
+void selectMultiplexerChannel(uint8_t channel) {
+  Wire.beginTransmission(TCA_ADDRESS);
+  Wire.write(1 << channel);
+  Wire.endTransmission();
+}
+
+float getAverageDistance(int numReadings) {
+  float total = 0;
+  for (int i = 0; i < numReadings; i++) {
+    ultrasonic.update();
+    float distance = ultrasonic.getDistance() / 10.0;  // تحويل المليمترات إلى سنتيمترات
+    if (distance > 0 && distance < 400) {  // التحقق من القراءات ضمن نطاق معقول
+      total += distance;
+    } else {
+      i--;  // تجاهل القراءة إذا كانت خارج النطاق
+    }
+    delay(5);  // تأخير صغير بين القراءات لتحسين الاستقرار
+  }
+  return total / numReadings;
+}
+
+void setup() {
+  Serial.begin(9600);
+  Wire.begin();
+
+  selectMultiplexerChannel(4);
+  ultrasonic.begin();
+  Serial.println("Ultrasonic sensor initialized");
+
+  selectMultiplexerChannel(3);
+  b1=sensor1.begin();
+
+  selectMultiplexerChannel(2);
+  b2=sensor2.begin();
+
+  Serial.print("BEGIN:\t");
+  Serial.print(b1);
+  Serial.print("\t");
+  Serial.print(b2);
+  Serial.println("\t");
+  timeTemp=millis();
+  timeUltra=millis();
+}
+
+void loop() {
+  if((unsigned long)millis()-timeTemp >= 2000)
+  {
+  selectMultiplexerChannel(3);
+  if (b1) sensor1.read();
+  
+  float temperature1 = sensor1.getTemperature();
+  float humidity1 = sensor1.getHumidity();
+
+  Serial.print("Sensor 1 - Temperature: ");
+  Serial.print(temperature1);
+  Serial.print("°C, Humidity: ");
+  Serial.print(humidity1);
+  Serial.println("%");
+
+  selectMultiplexerChannel(2);
+  if (b2) sensor2.read();
+  float temperature2 = sensor2.getTemperature();
+  float humidity2 = sensor2.getHumidity();
+
+  Serial.print("Sensor 2 - Temperature: ");
+  Serial.print(temperature2);
+  Serial.print("°C, Humidity: ");
+  Serial.print(humidity2);
+  Serial.println("%");
+  timeTemp=millis();
+  }
+
+  if((unsigned long)millis() - timeUltra >= 1000)
+  {
+  selectMultiplexerChannel(4);
+  float distance = getAverageDistance(10);  // أخذ متوسط 10 قراءات
+  Serial.print("Average Distance: ");
+  Serial.print(distance);
+  Serial.println(" cm");
+  timeUltra=millis();
+  }
+
+}
